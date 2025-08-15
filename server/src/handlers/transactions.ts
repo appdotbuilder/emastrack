@@ -1,79 +1,181 @@
+import { db } from '../db';
+import { goldTransactionsTable, usersTable } from '../db/schema';
 import { type CreateTransactionInput, type UpdateTransactionInput, type GoldTransaction } from '../schema';
+import { eq, and, desc } from 'drizzle-orm';
 
 // Handler for creating a new gold transaction
 export async function createTransaction(input: CreateTransactionInput): Promise<GoldTransaction> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to:
-    // 1. Calculate total_price from weight_grams * price_per_gram
-    // 2. Insert new transaction into database
-    // 3. Update user's zakat reminder data if necessary
-    // 4. Return the created transaction
-    const totalPrice = input.weight_grams * input.price_per_gram;
-    
-    return Promise.resolve({
-        id: 0,
+  try {
+
+    // Calculate total price with proper precision handling
+    const totalPrice = Math.round((input.weight_grams * input.price_per_gram) * 100) / 100;
+
+    // Insert new transaction
+    const result = await db.insert(goldTransactionsTable)
+      .values({
         user_id: input.user_id,
         type: input.type,
-        weight_grams: input.weight_grams,
-        price_per_gram: input.price_per_gram,
-        total_price: totalPrice,
+        weight_grams: input.weight_grams.toString(),
+        price_per_gram: input.price_per_gram.toString(),
+        total_price: totalPrice.toString(),
         transaction_date: input.transaction_date,
-        description: input.description || null,
-        created_at: new Date(),
-        updated_at: new Date()
-    } as GoldTransaction);
+        description: input.description || null
+      })
+      .returning()
+      .execute();
+
+    const transaction = result[0];
+
+    // Convert numeric fields back to numbers
+    return {
+      ...transaction,
+      weight_grams: parseFloat(transaction.weight_grams),
+      price_per_gram: parseFloat(transaction.price_per_gram),
+      total_price: parseFloat(transaction.total_price)
+    };
+  } catch (error) {
+    console.error('Transaction creation failed:', error);
+    throw error;
+  }
 }
 
 // Handler for updating an existing gold transaction
 export async function updateTransaction(input: UpdateTransactionInput): Promise<GoldTransaction> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to:
-    // 1. Find the existing transaction by ID
-    // 2. Update provided fields
-    // 3. Recalculate total_price if weight_grams or price_per_gram changed
-    // 4. Update user's zakat reminder data if necessary
-    // 5. Return the updated transaction
-    return Promise.resolve({
-        id: input.id,
-        user_id: 1, // Placeholder user_id
-        type: input.type || 'buy',
-        weight_grams: input.weight_grams || 10,
-        price_per_gram: input.price_per_gram || 50,
-        total_price: (input.weight_grams || 10) * (input.price_per_gram || 50),
-        transaction_date: input.transaction_date || new Date(),
-        description: input.description !== undefined ? input.description : null,
-        created_at: new Date(),
-        updated_at: new Date()
-    } as GoldTransaction);
+  try {
+    // First, get the existing transaction
+    const existingTransactions = await db.select()
+      .from(goldTransactionsTable)
+      .where(eq(goldTransactionsTable.id, input.id))
+      .execute();
+
+    if (existingTransactions.length === 0) {
+      throw new Error('Transaction not found');
+    }
+
+    const existingTransaction = existingTransactions[0];
+
+    // Prepare update values
+    const updateValues: any = {
+      updated_at: new Date()
+    };
+
+    // Only include fields that are provided
+    if (input.type !== undefined) {
+      updateValues.type = input.type;
+    }
+    if (input.weight_grams !== undefined) {
+      updateValues.weight_grams = input.weight_grams.toString();
+    }
+    if (input.price_per_gram !== undefined) {
+      updateValues.price_per_gram = input.price_per_gram.toString();
+    }
+    if (input.transaction_date !== undefined) {
+      updateValues.transaction_date = input.transaction_date;
+    }
+    if (input.description !== undefined) {
+      updateValues.description = input.description;
+    }
+
+    // Recalculate total_price if weight or price changed
+    const finalWeightGrams = input.weight_grams !== undefined ? input.weight_grams : parseFloat(existingTransaction.weight_grams);
+    const finalPricePerGram = input.price_per_gram !== undefined ? input.price_per_gram : parseFloat(existingTransaction.price_per_gram);
+    
+    if (input.weight_grams !== undefined || input.price_per_gram !== undefined) {
+      const recalculatedTotal = Math.round((finalWeightGrams * finalPricePerGram) * 100) / 100;
+      updateValues.total_price = recalculatedTotal.toString();
+    }
+
+    // Update the transaction
+    const result = await db.update(goldTransactionsTable)
+      .set(updateValues)
+      .where(eq(goldTransactionsTable.id, input.id))
+      .returning()
+      .execute();
+
+    const updatedTransaction = result[0];
+
+    // Convert numeric fields back to numbers
+    return {
+      ...updatedTransaction,
+      weight_grams: parseFloat(updatedTransaction.weight_grams),
+      price_per_gram: parseFloat(updatedTransaction.price_per_gram),
+      total_price: parseFloat(updatedTransaction.total_price)
+    };
+  } catch (error) {
+    console.error('Transaction update failed:', error);
+    throw error;
+  }
 }
 
 // Handler for deleting a gold transaction
 export async function deleteTransaction(transactionId: number, userId: number): Promise<boolean> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to:
-    // 1. Find the transaction by ID and verify it belongs to the user
-    // 2. Delete the transaction from database
-    // 3. Update user's zakat reminder data if necessary
-    // 4. Return true if successful, false otherwise
-    return Promise.resolve(true);
+  try {
+    // Delete the transaction, ensuring it belongs to the user
+    const result = await db.delete(goldTransactionsTable)
+      .where(and(
+        eq(goldTransactionsTable.id, transactionId),
+        eq(goldTransactionsTable.user_id, userId)
+      ))
+      .returning()
+      .execute();
+
+    return result.length > 0;
+  } catch (error) {
+    console.error('Transaction deletion failed:', error);
+    throw error;
+  }
 }
 
 // Handler for getting user's gold transactions
 export async function getUserTransactions(userId: number): Promise<GoldTransaction[]> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to:
-    // 1. Fetch all transactions for the specified user
-    // 2. Order by transaction_date descending (newest first)
-    // 3. Return the list of transactions
-    return Promise.resolve([]);
+  try {
+    // Fetch all transactions for the user, ordered by transaction_date descending
+    const transactions = await db.select()
+      .from(goldTransactionsTable)
+      .where(eq(goldTransactionsTable.user_id, userId))
+      .orderBy(desc(goldTransactionsTable.transaction_date))
+      .execute();
+
+    // Convert numeric fields back to numbers
+    return transactions.map(transaction => ({
+      ...transaction,
+      weight_grams: parseFloat(transaction.weight_grams),
+      price_per_gram: parseFloat(transaction.price_per_gram),
+      total_price: parseFloat(transaction.total_price)
+    }));
+  } catch (error) {
+    console.error('Failed to get user transactions:', error);
+    throw error;
+  }
 }
 
 // Handler for getting a specific transaction by ID
 export async function getTransactionById(transactionId: number, userId: number): Promise<GoldTransaction | null> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to:
-    // 1. Find the transaction by ID
-    // 2. Verify it belongs to the user
-    // 3. Return the transaction or null if not found/unauthorized
-    return Promise.resolve(null);
+  try {
+    // Find the transaction by ID and verify it belongs to the user
+    const transactions = await db.select()
+      .from(goldTransactionsTable)
+      .where(and(
+        eq(goldTransactionsTable.id, transactionId),
+        eq(goldTransactionsTable.user_id, userId)
+      ))
+      .execute();
+
+    if (transactions.length === 0) {
+      return null;
+    }
+
+    const transaction = transactions[0];
+
+    // Convert numeric fields back to numbers
+    return {
+      ...transaction,
+      weight_grams: parseFloat(transaction.weight_grams),
+      price_per_gram: parseFloat(transaction.price_per_gram),
+      total_price: parseFloat(transaction.total_price)
+    };
+  } catch (error) {
+    console.error('Failed to get transaction by ID:', error);
+    throw error;
+  }
 }

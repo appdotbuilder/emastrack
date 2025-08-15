@@ -1,84 +1,196 @@
+import { db } from '../db';
+import { goldGoalsTable, usersTable } from '../db/schema';
 import { type CreateGoalInput, type UpdateGoalInput, type GoldGoal } from '../schema';
+import { eq, and, asc } from 'drizzle-orm';
 
 // Handler for creating a new gold purchase goal
 export async function createGoal(input: CreateGoalInput): Promise<GoldGoal> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to:
-    // 1. Create a new goal with the provided input
-    // 2. Set is_completed to false by default
-    // 3. Insert into database
-    // 4. Return the created goal
-    return Promise.resolve({
-        id: 0,
+  try {
+    // Verify user exists first
+    const user = await db.select()
+      .from(usersTable)
+      .where(eq(usersTable.id, input.user_id))
+      .execute();
+
+    if (user.length === 0) {
+      throw new Error(`User with id ${input.user_id} not found`);
+    }
+
+    // Insert goal record
+    const result = await db.insert(goldGoalsTable)
+      .values({
         user_id: input.user_id,
-        target_weight_grams: input.target_weight_grams,
+        target_weight_grams: input.target_weight_grams.toString(),
         deadline: input.deadline,
         title: input.title,
         description: input.description || null,
-        is_completed: false,
-        created_at: new Date(),
-        updated_at: new Date()
-    } as GoldGoal);
+        is_completed: false
+      })
+      .returning()
+      .execute();
+
+    // Convert numeric fields back to numbers before returning
+    const goal = result[0];
+    return {
+      ...goal,
+      target_weight_grams: parseFloat(goal.target_weight_grams)
+    };
+  } catch (error) {
+    console.error('Goal creation failed:', error);
+    throw error;
+  }
 }
 
 // Handler for updating an existing gold purchase goal
 export async function updateGoal(input: UpdateGoalInput): Promise<GoldGoal> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to:
-    // 1. Find the existing goal by ID
-    // 2. Update provided fields
-    // 3. Update updated_at timestamp
-    // 4. Return the updated goal
-    return Promise.resolve({
-        id: input.id,
-        user_id: 1, // Placeholder user_id
-        target_weight_grams: input.target_weight_grams || 100,
-        deadline: input.deadline || new Date(),
-        title: input.title || 'Goal Title',
-        description: input.description !== undefined ? input.description : null,
-        is_completed: input.is_completed || false,
-        created_at: new Date(),
-        updated_at: new Date()
-    } as GoldGoal);
+  try {
+    // First check if goal exists
+    const existingGoal = await db.select()
+      .from(goldGoalsTable)
+      .where(eq(goldGoalsTable.id, input.id))
+      .execute();
+
+    if (existingGoal.length === 0) {
+      throw new Error(`Goal with id ${input.id} not found`);
+    }
+
+    // Build update object with only provided fields
+    const updateData: any = {
+      updated_at: new Date()
+    };
+
+    if (input.target_weight_grams !== undefined) {
+      updateData.target_weight_grams = input.target_weight_grams.toString();
+    }
+    if (input.deadline !== undefined) {
+      updateData.deadline = input.deadline;
+    }
+    if (input.title !== undefined) {
+      updateData.title = input.title;
+    }
+    if (input.description !== undefined) {
+      updateData.description = input.description;
+    }
+    if (input.is_completed !== undefined) {
+      updateData.is_completed = input.is_completed;
+    }
+
+    // Update the goal
+    const result = await db.update(goldGoalsTable)
+      .set(updateData)
+      .where(eq(goldGoalsTable.id, input.id))
+      .returning()
+      .execute();
+
+    // Convert numeric fields back to numbers before returning
+    const goal = result[0];
+    return {
+      ...goal,
+      target_weight_grams: parseFloat(goal.target_weight_grams)
+    };
+  } catch (error) {
+    console.error('Goal update failed:', error);
+    throw error;
+  }
 }
 
 // Handler for deleting a gold purchase goal
 export async function deleteGoal(goalId: number, userId: number): Promise<boolean> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to:
-    // 1. Find the goal by ID and verify it belongs to the user
-    // 2. Delete the goal from database
-    // 3. Return true if successful, false otherwise
-    return Promise.resolve(true);
+  try {
+    // Delete the goal with both ID and user_id conditions for security
+    const result = await db.delete(goldGoalsTable)
+      .where(and(
+        eq(goldGoalsTable.id, goalId),
+        eq(goldGoalsTable.user_id, userId)
+      ))
+      .returning()
+      .execute();
+
+    // Return true if a goal was deleted, false if no matching goal found
+    return result.length > 0;
+  } catch (error) {
+    console.error('Goal deletion failed:', error);
+    throw error;
+  }
 }
 
 // Handler for getting user's gold purchase goals
 export async function getUserGoals(userId: number): Promise<GoldGoal[]> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to:
-    // 1. Fetch all goals for the specified user
-    // 2. Order by deadline ascending (upcoming deadlines first)
-    // 3. Return the list of goals
-    return Promise.resolve([]);
+  try {
+    // Fetch all goals for the user ordered by deadline ascending
+    const results = await db.select()
+      .from(goldGoalsTable)
+      .where(eq(goldGoalsTable.user_id, userId))
+      .orderBy(asc(goldGoalsTable.deadline))
+      .execute();
+
+    // Convert numeric fields back to numbers before returning
+    return results.map(goal => ({
+      ...goal,
+      target_weight_grams: parseFloat(goal.target_weight_grams)
+    }));
+  } catch (error) {
+    console.error('Get user goals failed:', error);
+    throw error;
+  }
 }
 
 // Handler for getting a specific goal by ID
 export async function getGoalById(goalId: number, userId: number): Promise<GoldGoal | null> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to:
-    // 1. Find the goal by ID
-    // 2. Verify it belongs to the user
-    // 3. Return the goal or null if not found/unauthorized
-    return Promise.resolve(null);
+  try {
+    // Find goal by ID and verify it belongs to the user
+    const results = await db.select()
+      .from(goldGoalsTable)
+      .where(and(
+        eq(goldGoalsTable.id, goalId),
+        eq(goldGoalsTable.user_id, userId)
+      ))
+      .execute();
+
+    if (results.length === 0) {
+      return null;
+    }
+
+    // Convert numeric fields back to numbers before returning
+    const goal = results[0];
+    return {
+      ...goal,
+      target_weight_grams: parseFloat(goal.target_weight_grams)
+    };
+  } catch (error) {
+    console.error('Get goal by ID failed:', error);
+    throw error;
+  }
 }
 
 // Handler for marking a goal as completed
 export async function markGoalCompleted(goalId: number, userId: number): Promise<GoldGoal | null> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to:
-    // 1. Find the goal by ID and verify it belongs to the user
-    // 2. Set is_completed to true
-    // 3. Update updated_at timestamp
-    // 4. Return the updated goal or null if not found/unauthorized
-    return Promise.resolve(null);
+  try {
+    // Update the goal to completed with user verification
+    const result = await db.update(goldGoalsTable)
+      .set({
+        is_completed: true,
+        updated_at: new Date()
+      })
+      .where(and(
+        eq(goldGoalsTable.id, goalId),
+        eq(goldGoalsTable.user_id, userId)
+      ))
+      .returning()
+      .execute();
+
+    if (result.length === 0) {
+      return null;
+    }
+
+    // Convert numeric fields back to numbers before returning
+    const goal = result[0];
+    return {
+      ...goal,
+      target_weight_grams: parseFloat(goal.target_weight_grams)
+    };
+  } catch (error) {
+    console.error('Mark goal completed failed:', error);
+    throw error;
+  }
 }

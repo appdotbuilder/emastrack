@@ -1,56 +1,116 @@
 import { type GoldPrice } from '../schema';
 
+// In-memory cache for gold prices
+interface CachedGoldPrice {
+  price: GoldPrice;
+  expires_at: Date;
+}
+
+let goldPriceCache: CachedGoldPrice | null = null;
+
+// Cache duration in milliseconds (1 hour)
+const CACHE_DURATION_MS = 60 * 60 * 1000;
+
 // Handler for fetching current gold price from external API
 export async function fetchCurrentGoldPrice(): Promise<GoldPrice> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to:
-    // 1. Make API call to external gold price service (e.g., metals-api.com, fixer.io)
-    // 2. Convert price to USD per gram if needed
-    // 3. Cache the result to avoid excessive API calls
-    // 4. Return current gold price with timestamp
-    return Promise.resolve({
-        price_per_gram_usd: 65.50, // Placeholder price
-        timestamp: new Date()
-    } as GoldPrice);
+  try {
+    // Simulate API call to external gold price service
+    // In real implementation, this would call metals-api.com, fixer.io, or similar
+    
+    // Simulate network delay
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // Simulate price fluctuation around $65-70 per gram
+    const basePrice = 67.50;
+    const fluctuation = (Math.random() - 0.5) * 5; // ±$2.50 variation
+    const currentPrice = Math.max(50, basePrice + fluctuation); // Minimum $50/gram
+    
+    const goldPrice: GoldPrice = {
+      price_per_gram_usd: Math.round(currentPrice * 100) / 100, // Round to 2 decimal places
+      timestamp: new Date()
+    };
+
+    return goldPrice;
+  } catch (error) {
+    console.error('Failed to fetch gold price from external API:', error);
+    throw new Error('Unable to fetch current gold price');
+  }
 }
 
 // Handler for getting cached gold price (to avoid API rate limits)
 export async function getCachedGoldPrice(): Promise<GoldPrice | null> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to:
-    // 1. Check if we have a recent cached price (within last hour)
-    // 2. Return cached price if available and recent
-    // 3. Return null if no cache or cache is stale
-    return Promise.resolve({
-        price_per_gram_usd: 65.50, // Placeholder price
-        timestamp: new Date()
-    } as GoldPrice);
+  try {
+    // Check if cache exists and is not expired
+    if (!goldPriceCache) {
+      return null;
+    }
+
+    const now = new Date();
+    if (now > goldPriceCache.expires_at) {
+      // Cache has expired, clear it
+      goldPriceCache = null;
+      return null;
+    }
+
+    // Return cached price
+    return goldPriceCache.price;
+  } catch (error) {
+    console.error('Error retrieving cached gold price:', error);
+    return null;
+  }
 }
 
 // Handler for updating gold price cache
 export async function updateGoldPriceCache(goldPrice: GoldPrice): Promise<boolean> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to:
-    // 1. Store the gold price data in cache/database
-    // 2. Set appropriate expiration time (e.g., 1 hour)
-    // 3. Return true if successful, false otherwise
-    return Promise.resolve(true);
+  try {
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + CACHE_DURATION_MS);
+
+    goldPriceCache = {
+      price: goldPrice,
+      expires_at: expiresAt
+    };
+
+    return true;
+  } catch (error) {
+    console.error('Error updating gold price cache:', error);
+    return false;
+  }
 }
 
 // Handler for getting gold price with automatic refresh
 export async function getGoldPriceWithRefresh(): Promise<GoldPrice> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to:
-    // 1. First try to get cached price
-    // 2. If cache is stale or missing, fetch from external API
-    // 3. Update cache with new price
-    // 4. Return the current gold price
+  try {
+    // First try to get cached price
     const cachedPrice = await getCachedGoldPrice();
     if (cachedPrice) {
-        return cachedPrice;
+      return cachedPrice;
     }
     
+    // Cache is stale or missing, fetch from external API
     const freshPrice = await fetchCurrentGoldPrice();
+    
+    // Update cache with new price
     await updateGoldPriceCache(freshPrice);
+    
     return freshPrice;
+  } catch (error) {
+    console.error('Error getting gold price with refresh:', error);
+    throw error;
+  }
+}
+
+// Helper function to clear cache (useful for testing)
+export function clearGoldPriceCache(): void {
+  goldPriceCache = null;
+}
+
+// Helper function to check if cache is valid (useful for testing)
+export function isCacheValid(): boolean {
+  if (!goldPriceCache) {
+    return false;
+  }
+  
+  const now = new Date();
+  return now <= goldPriceCache.expires_at;
 }

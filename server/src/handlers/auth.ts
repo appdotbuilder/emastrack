@@ -1,56 +1,163 @@
+import { db } from '../db';
+import { usersTable } from '../db/schema';
 import { type SignUpInput, type SignInInput, type GoogleAuthInput, type User } from '../schema';
+import { eq } from 'drizzle-orm';
+
 
 // Handler for user registration with email/password
 export async function signUp(input: SignUpInput): Promise<User> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to:
-    // 1. Hash the password using bcrypt or similar
-    // 2. Check if email already exists
-    // 3. Create new user in database
-    // 4. Return user data (without password hash)
-    return Promise.resolve({
-        id: 0,
+  try {
+    // Check if user already exists
+    const existingUser = await db.select()
+      .from(usersTable)
+      .where(eq(usersTable.email, input.email))
+      .execute();
+
+    if (existingUser.length > 0) {
+      throw new Error('User with this email already exists');
+    }
+
+    // Hash the password using Bun's built-in password hashing
+    const passwordHash = await Bun.password.hash(input.password);
+
+    // Create new user
+    const result = await db.insert(usersTable)
+      .values({
         email: input.email,
-        password_hash: 'hashed_password_placeholder',
+        password_hash: passwordHash,
         name: input.name,
-        google_id: null,
-        created_at: new Date(),
-        updated_at: new Date()
-    } as User);
+        google_id: null
+      })
+      .returning()
+      .execute();
+
+    const user = result[0];
+    return {
+      id: user.id,
+      email: user.email,
+      password_hash: user.password_hash,
+      name: user.name,
+      google_id: user.google_id,
+      created_at: user.created_at,
+      updated_at: user.updated_at
+    };
+  } catch (error) {
+    console.error('Sign up failed:', error);
+    throw error;
+  }
 }
 
 // Handler for user login with email/password
 export async function signIn(input: SignInInput): Promise<User | null> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to:
-    // 1. Find user by email
-    // 2. Verify password against stored hash
-    // 3. Return user data if credentials are valid, null otherwise
-    return Promise.resolve({
-        id: 1,
-        email: input.email,
-        password_hash: 'hashed_password_placeholder',
-        name: 'Mock User',
-        google_id: null,
-        created_at: new Date(),
-        updated_at: new Date()
-    } as User);
+  try {
+    // Find user by email
+    const users = await db.select()
+      .from(usersTable)
+      .where(eq(usersTable.email, input.email))
+      .execute();
+
+    if (users.length === 0) {
+      return null; // User not found
+    }
+
+    const user = users[0];
+
+    // Verify password using Bun's built-in password verification
+    const isValidPassword = await Bun.password.verify(input.password, user.password_hash);
+    if (!isValidPassword) {
+      return null; // Invalid password
+    }
+
+    return {
+      id: user.id,
+      email: user.email,
+      password_hash: user.password_hash,
+      name: user.name,
+      google_id: user.google_id,
+      created_at: user.created_at,
+      updated_at: user.updated_at
+    };
+  } catch (error) {
+    console.error('Sign in failed:', error);
+    throw error;
+  }
 }
 
 // Handler for Google OAuth authentication
 export async function googleAuth(input: GoogleAuthInput): Promise<User> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to:
-    // 1. Check if user with google_id already exists
-    // 2. If not, create new user with Google credentials
-    // 3. Return user data
-    return Promise.resolve({
-        id: 2,
+  try {
+    // Check if user with google_id already exists
+    const existingUser = await db.select()
+      .from(usersTable)
+      .where(eq(usersTable.google_id, input.google_id))
+      .execute();
+
+    if (existingUser.length > 0) {
+      // Return existing user
+      const user = existingUser[0];
+      return {
+        id: user.id,
+        email: user.email,
+        password_hash: user.password_hash,
+        name: user.name,
+        google_id: user.google_id,
+        created_at: user.created_at,
+        updated_at: user.updated_at
+      };
+    }
+
+    // Check if user with same email already exists (but without Google ID)
+    const emailUser = await db.select()
+      .from(usersTable)
+      .where(eq(usersTable.email, input.email))
+      .execute();
+
+    if (emailUser.length > 0) {
+      // Update existing user with Google ID
+      const result = await db.update(usersTable)
+        .set({
+          google_id: input.google_id,
+          updated_at: new Date()
+        })
+        .where(eq(usersTable.email, input.email))
+        .returning()
+        .execute();
+
+      const user = result[0];
+      return {
+        id: user.id,
+        email: user.email,
+        password_hash: user.password_hash,
+        name: user.name,
+        google_id: user.google_id,
+        created_at: user.created_at,
+        updated_at: user.updated_at
+      };
+    }
+
+    // Create new user with Google credentials
+    const result = await db.insert(usersTable)
+      .values({
         email: input.email,
-        password_hash: 'google_oauth_placeholder',
+        password_hash: 'google_oauth_user', // Placeholder for Google OAuth users
         name: input.name,
-        google_id: input.google_id,
-        created_at: new Date(),
-        updated_at: new Date()
-    } as User);
+        google_id: input.google_id
+      })
+      .returning()
+      .execute();
+
+    const user = result[0];
+    return {
+      id: user.id,
+      email: user.email,
+      password_hash: user.password_hash,
+      name: user.name,
+      google_id: user.google_id,
+      created_at: user.created_at,
+      updated_at: user.updated_at
+    };
+  } catch (error) {
+    console.error('Google auth failed:', error);
+    throw error;
+  }
 }
